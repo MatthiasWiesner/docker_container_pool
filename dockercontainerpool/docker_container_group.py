@@ -59,6 +59,7 @@ class DockerContainerGroup(object):
         image = predefined_specs.pop('image')
 
         if specs:
+            specs.pop('image', None)
             predefined_specs.update(specs)
 
         predefined_specs['name'] = '{}--{}'.format(

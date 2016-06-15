@@ -9,21 +9,40 @@ This tool provides a RESTlike interface to start, stop or delete containers.
 Look at te unittests and functionaltests for detailed info...
 
 ## Create a docker container group
+When you create a docker container group, you don't create containers yet, but define a template.
 
 To create a docker container group do a POST request to:
+`http://{{base_url}}/container_group/<string:group_identifier>`
+with a json data structure like:
+```json
+{
+  "start": true,
+  "specs": {
+        "image": "redis",
+        "command": "",
+        "hostname": "abcdefg",
+        "entrypoint": "/path/to/entrypoint"
+  }
+}
+```
+whereby the `specs` are directly passed to the docker python binding (which passes the specs to the docker remote api as well).
+For details see more at: https://docker-py.readthedocs.io/en/latest/api/#create_container
+
+**But, be careful!** I often faced issues, due to an obsolete docker python binding API doc. You should also consult
+the Docker Remote Api (latest version).
+Currently: https://docs.docker.com/engine/reference/api/docker_remote_api_v1.23/#create-a-container
+
+To create a container, do a POST request to:
 `http://{{base_url}}/container_group/<string:group_identifier>/container`
 with a json data structure like:
 ```json
 {
   "start": true,
   "specs": {
-            "command": ""
+        "command": "",
+        "hostname": "abcdefg",
+        "entrypoint": "/path/to/entrypoint"
   }
 }
 ```
-whereby the specs are directly passed to the docker python binding (which passes the specs to the docker remote api as well).
-For details see more at: https://docker-py.readthedocs.io/en/latest/api/#create_container
-
-**But, be careful!** I often faced issues, due to an obsolete docker python binding API doc. You should also consult
-the Docker Remote Api (latest version).
-Currently: https://docs.docker.com/engine/reference/api/docker_remote_api_v1.23/#create-a-container
+with the `specs` you can override the docker container group `specs`, but not `image`.
