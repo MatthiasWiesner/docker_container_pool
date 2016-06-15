@@ -6,11 +6,9 @@ import logging
 from copy import deepcopy
 from docker.errors import APIError
 
-from errors import DockerContainerGroupMaxCountReached
-
 
 __doc__ = '''
-This module helps to maintain your docker container.
+This module helps to maintain your docker container group.
 '''
 
 logger = logging.getLogger(__name__)
@@ -22,25 +20,17 @@ logger.addHandler(handler)
 class DockerContainerGroup(object):
     group_identifier = None
     client = None
-    min_count = 0
-    max_count = 0
     specs = {}
-
-    container_list = []
 
     def __init__(
             self,
             group_identifier,
             client,
-            min_count,
-            max_count,
             specs,
             update_image=False):
 
         self.group_identifier = group_identifier
         self.client = client
-        self.min_count = min_count
-        self.max_count = max_count
         self.specs = specs
 
         if update_image:
@@ -53,15 +43,18 @@ class DockerContainerGroup(object):
 
         return self.client.containers(all=True, filters=filters)
 
+    def get_available_container_list(self):
+        return self.get_container_list(status=['created', 'exited'])
+
+    def get_running_container_list(self):
+        return self.get_container_list(status=['running'])
+
     def get_container(self, container_identifier):
         return self.client.containers(all=True, filters=dict(
             id=container_identifier))[0]
 
     def create_container(self, start=True, specs={}):
         # http://docker-py.readthedocs.io/en/latest/api/#create_container
-        if len(self.get_container_list()) >= self.max_count:
-            raise DockerContainerGroupMaxCountReached()
-
         predefined_specs = deepcopy(self.specs)
         image = predefined_specs.pop('image')
 
@@ -72,7 +65,6 @@ class DockerContainerGroup(object):
             self.group_identifier, str(uuid.uuid4()))
 
         container = self.client.create_container(image, **predefined_specs)
-
         if start:
             self.client.start(container.get('Id'))
 
@@ -97,46 +89,65 @@ class DockerContainerGroup(object):
         return self.client.exec_start(
             exec_id=exec_id)
 
+    def remove_all_container(self):
+        for container in self.get_container_list():
+            self.remove_container(container.get('Id'))
+
+    def set_running_container(self, count):
+        running_container_list = self.get_running_container_list()
+        count_running = len(running_container_list)
+        count_to_start = count - count_running
+        if count_to_start == 0:
+            return
+
+        # start available container and create new ones, if necessary
+        if count_to_start > 0:
+            available_containers = self.get_available_container_list()
+            for i in range(min(count_to_start, len(available_containers))):
+                c = available_containers[i]
+                self.start_container(c.get('Id'))
+                count_to_start -= 1
+
+            for _ in range(count_to_start):
+                self.create_container(start=True)
+        else:
+            for i in range(count_running - count):
+                c = running_container_list[i]
+                self.stop_container(c.get('Id'))
+
+    def set_available_container(self, count):
+        available_container_list = self.get_available_container_list()
+        count_available = len(available_container_list)
+        count_to_start = count - count_available
+        if count_to_start == 0:
+            return
+
+        # start available container and create new ones, if necessary
+        if count_to_start > 0:
+            for _ in range(count_to_start):
+                self.create_container(start=False)
+        else:
+            for i in range(count_available - count):
+                c = available_container_list[i]
+                self.remove_container(c.get('Id'))
+
     def remove_container(self, container_identifier):
         self._kill_remove_container(container_identifier)
 
-    def remove_multiple_container(self, count, force_used_container=False):
-        available_container = self.get_container_list(
-            status=['created', 'exited'])
-
-        count_available = len(available_container)
-        count_rm_from_avail = min(count_available, count)
-
-        for i, c in enumerate(available_container[0:count_rm_from_avail]):
-            self._kill_remove_container(c['container'])
-            del self.container_list[i]
-
-        # are still some containers left to be removed?
-        if count > count_rm_from_avail and force_used_container:
-            used_container = self.get_container_list(
-                status='running')
-
-            count_used = len(used_container)
-            count_rm_from_used = min(
-                count_used, count - count_rm_from_avail)
-
-            for i, c in enumerate(used_container[0:count_rm_from_used]):
-                self._kill_remove_container(c['container'])
-                del self.container_list[i]
-
     def _kill_remove_container(self, container_id):
         # if we run into problems, see here: http://blog.bordage.pro/avoid-docker-py/  # nopep8
-        try:
-            self.client.kill(container_id)
-        except APIError as e:
-            logger.error(e)
-            self.client.wait(container_id)
+        container = self.get_container(container_id)
+        if container['State'] == 'running':
+            try:
+                self.client.kill(container_id)
+            except APIError as e:
+                logger.error(e)
+                self.client.wait(container_id)
+
         try:
             self.client.remove_container(container_id)
         except APIError as e:
             logger.error(e)  # This should work anyway (and I don't understand why)  # nopep8
 
     def to_dict(self):
-        return dict(min_count=self.min_count,
-                    max_count=self.max_count,
-                    specs=self.specs)
+        return dict(specs=self.specs)

@@ -13,7 +13,3 @@ class DockerContainerPoolGroupNotFound(DockerContainerPoolException):
 
 class DockerContainerGroupException(DockerContainerPoolException):
     pass
-
-
-class DockerContainerGroupMaxCountReached(DockerContainerGroupException):
-    pass

@@ -39,8 +39,6 @@ def add_container_group(group_identifier):
     The request body must be like this structure:
     ```json
     {
-      "min_count": 1,
-      "max_count": 5,
       "specs": {
                 "image": "redis",
                 "command": ""
@@ -66,11 +64,13 @@ def get_container_group(group_identifier):
 def update_container_group(group_identifier):
     parsed_json = request.get_json()
     container_group = current_app.pool.get_container_group(group_identifier)
-    container_group.min_count = parsed_json.get(
-        'min_count', container_group.min_count)
-    container_group.max_count = parsed_json.get(
-        'max_count', container_group.max_count)
     container_group.specs = parsed_json.get('specs', container_group.specs)
+    return '', 200, {'ContentType': 'application/json'}
+
+
+@app.route("/container_group/<string:group_identifier>", methods=['DELETE'])
+def delete_container_group(group_identifier):
+    current_app.pool.delete_container_group(group_identifier)
     return '', 200, {'ContentType': 'application/json'}
 
 
@@ -142,6 +142,22 @@ def exec_command_container(group_identifier, container_identifier):
 def remove_container(group_identifier, container_identifier):
     container_group = current_app.pool.get_container_group(group_identifier)
     container_group.remove_container(container_identifier)
+    return '', 200, {'ContentType': 'application/json'}
+
+
+@app.route("/container_group/<string:group_identifier>/set_running_container", methods=['POST'])  # nopep8
+def set_running_container(group_identifier):
+    parsed_json = request.get_json()
+    container_group = current_app.pool.get_container_group(group_identifier)
+    container_group.set_running_container(int(parsed_json['count']))
+    return '', 200, {'ContentType': 'application/json'}
+
+
+@app.route("/container_group/<string:group_identifier>/set_available_container", methods=['POST'])  # nopep8
+def set_available_container(group_identifier):
+    parsed_json = request.get_json()
+    container_group = current_app.pool.get_container_group(group_identifier)
+    container_group.set_available_container(int(parsed_json['count']))
     return '', 200, {'ContentType': 'application/json'}
 
 

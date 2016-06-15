@@ -38,8 +38,6 @@ class DockerContainerPoolTestCase(unittest.TestCase):
         result = self.client.post(
             '/container_group/redis',
             headers=headers, data=json.dumps({
-                "min_count": 1,
-                "max_count": 5,
                 "specs": {
                     "image": "redis"
                 }
@@ -50,8 +48,6 @@ class DockerContainerPoolTestCase(unittest.TestCase):
         result = self.client.post(
             '/container_group/redis',
             headers=headers, data=json.dumps({
-                "min_count": 1,
-                "max_count": 5,
                 "specs": {
                     "image": "redis"
                 }
@@ -63,8 +59,6 @@ class DockerContainerPoolTestCase(unittest.TestCase):
     def test_update_container_group(self):
         # update not existing container group
         container_group_conf = {
-            "min_count": 1,
-            "max_count": 5,
             "specs": {
                 "image": "redis"
             }
@@ -91,8 +85,6 @@ class DockerContainerPoolTestCase(unittest.TestCase):
 
         # update container group
         container_group_conf = {
-            "min_count": 10,
-            "max_count": 50,
             "specs": {
                 "image": "other-redis"
             }
@@ -111,26 +103,29 @@ class DockerContainerPoolTestCase(unittest.TestCase):
     def test_create_container(self, uuid):
         uuid.uuid4.return_value = 'aaaa-aaaa-aaaa-aaaa'
 
-        self._set_container_group(max_count=1)
+        self._set_container_group()
 
-        container_id = 'meinecontainerid'
-        mycontainer = self._get_container_response(container_id)
-
-        self.docker_client_mock.containers.side_effect = [
-            [],
-            [mycontainer],
-            [mycontainer],
+        container_list = [
+            self._get_container_response('containerid_1', state='Created'),
+            self._get_container_response('containerid_2', state='Running'),
         ]
-        self.docker_client_mock.create_container.return_value = mycontainer
+
+        self.docker_client_mock.create_container.side_effect = container_list
+        self.docker_client_mock.containers.side_effect = [
+            [container_list[0]],
+            [container_list[1]]
+        ]
 
         headers = {"Content-Type": "application/json"}
         result = self.client.post(
             '/container_group/redis/container',
             headers=headers, data=json.dumps({
-                "start": True
+                "start": False
                 }))
+
         self.assertEqual(200, result.status_code)
-        self.assertEqual(mycontainer, json.loads(result.data))
+
+        self.assertTrue(container_list[0] == json.loads(result.data))
         self.assertEqual(
             call(u'redis', name='redis--aaaa-aaaa-aaaa-aaaa'),
             self.docker_client_mock.create_container.call_args)
@@ -141,12 +136,12 @@ class DockerContainerPoolTestCase(unittest.TestCase):
             headers=headers, data=json.dumps({
                 "start": True
                 }))
-        self.assertEqual("DockerContainerGroupMaxCountReached", json.loads(
-            result.data).get("error_type"))
-        self.assertEqual(500, result.status_code)
+
+        self.assertTrue(container_list[1] == json.loads(result.data))
+        self.assertEqual(200, result.status_code)
 
     def test_start_container(self):
-        self._set_container_group(max_count=1)
+        self._set_container_group()
 
         container_id = 'meinecontainerid'
         mycontainer = self._get_container_response(container_id, 'running')
@@ -166,7 +161,7 @@ class DockerContainerPoolTestCase(unittest.TestCase):
             self.docker_client_mock.start.call_args)
 
     def test_stop_container(self):
-        self._set_container_group(max_count=1)
+        self._set_container_group()
 
         container_id = 'meinecontainerid'
         mycontainer = self._get_container_response(container_id, 'exited')
@@ -187,7 +182,7 @@ class DockerContainerPoolTestCase(unittest.TestCase):
             self.docker_client_mock.stop.call_args)
 
     def test_exec_command_container(self):
-        self._set_container_group(max_count=1)
+        self._set_container_group()
 
         container_id = 'meinecontainerid'
         mycontainer = self._get_container_response(container_id, 'running')
@@ -211,7 +206,7 @@ class DockerContainerPoolTestCase(unittest.TestCase):
             self.docker_client_mock.exec_start.call_args)
 
     def test_remove_container(self):
-        self._set_container_group(max_count=1)
+        self._set_container_group()
 
         self.docker_client_mock.kill.side_effect = APIError(
             Mock(), Mock(), "explanation")
@@ -232,14 +227,9 @@ class DockerContainerPoolTestCase(unittest.TestCase):
             call(u'meinecontainerid'),
             self.docker_client_mock.remove_container.call_args)
 
-    def test_remove_multiple_conatainer(self):
-        pass
-
     def _set_container_group(
             self,
             group_identifier='redis',
-            min_count=1,
-            max_count=5,
             image='redis'):
 
         headers = {"Content-Type": "application/json"}
@@ -247,8 +237,6 @@ class DockerContainerPoolTestCase(unittest.TestCase):
             '/container_group/' + group_identifier,
             headers=headers, data=json.dumps(
                 dict(
-                    min_count=min_count,
-                    max_count=max_count,
                     specs=dict(image=image)
                 )))
 
@@ -256,7 +244,7 @@ class DockerContainerPoolTestCase(unittest.TestCase):
         # return a docker like container structure
         # name differs from the created one
         return {
-                u'Status': u'Created',
+                u'Status': state,
                 u'Created': 1462873363,
                 u'Image': u'redis',
                 u'Labels': {},

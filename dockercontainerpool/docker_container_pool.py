@@ -31,12 +31,7 @@ class DockerContainerPool(object):
             group_identifier, self.client, *args, **kwargs)
         self.container_group_list[group_identifier] = container_group
 
-    def create_container(self, group_identifier, start=False):
-        container_group = self.get_container_group()
-        container_group.create_container(start=start)
-
-    def remove_container(
-            self, group_identifier, count, force_used_container=False):
-        container_group = self.get_container_group()
-        container_group.remove_container(
-            count, force_used_container=force_used_container)
+    def delete_container_group(self, group_identifier):
+        container_group = self.container_group_list[group_identifier]
+        container_group.remove_all_container()
+        del self.container_group_list[group_identifier]
